@@ -33,6 +33,22 @@ jobs:
           if ssh -p "$PORT" "${SSH_USER}@${SSH_HOST}" 'test -f /etc/letsencrypt/live/aloestelam.ir/fullchain.pem'; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Certificate already present"
+            # Ensure ephemeral timer/files are gone even if an older run left them.
+            ssh -p "$PORT" "${SSH_USER}@${SSH_HOST}" bash -s <<'CLEAN'
+            set -euo pipefail
+            systemctl disable --now aloestelam-cert.timer 2>/dev/null || true
+            systemctl stop aloestelam-cert.service 2>/dev/null || true
+            rm -f /etc/systemd/system/aloestelam-cert.timer
+            rm -f /etc/systemd/system/aloestelam-cert.service
+            rm -f /etc/systemd/system/timers.target.wants/aloestelam-cert.timer
+            rm -f /var/www/aloestelam/deploy/auto-issue-cert.sh
+            rm -f /var/www/aloestelam/deploy/install-runtime.sh
+            rm -f /var/www/aloestelam/.ssl-ready
+            rm -f /var/www/certbot/.well-known/acme-challenge/aloestelam-ready
+            rm -rf /tmp/aloestelam-deploy /tmp/aloestelam-deploy-bundle
+            rm -f /tmp/aloestelam-deploy-bundle.tgz /tmp/aloestelam-publish.tar.gz
+            systemctl daemon-reload 2>/dev/null || true
+            CLEAN
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi

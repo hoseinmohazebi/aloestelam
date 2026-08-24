@@ -6,20 +6,44 @@ EMAIL="${CERTBOT_EMAIL:-admin@aloestelam.ir}"
 DEPLOY_DIR="/var/www/aloestelam/deploy"
 NGINX_SITE_SRC="${DEPLOY_DIR}/aloestelam.ir.conf"
 CHALLENGE_DIR="/var/www/certbot/.well-known/acme-challenge"
-MARKER_FILE="/var/www/aloestelam/.ssl-ready"
 EXPECTED_IP="${EXPECTED_ORIGIN_IP:-65.109.221.32}"
 
 log() { echo "[aloestelam-cert] $*"; }
 
-if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
-  log "Certificate already exists."
+cleanup_ephemeral() {
+  log "Cleaning ephemeral cert timer/files..."
+  systemctl disable --now aloestelam-cert.timer 2>/dev/null || true
+  systemctl stop aloestelam-cert.service 2>/dev/null || true
+  rm -f /etc/systemd/system/aloestelam-cert.timer
+  rm -f /etc/systemd/system/aloestelam-cert.service
+  rm -f /etc/systemd/system/timers.target.wants/aloestelam-cert.timer
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl reset-failed aloestelam-cert.service aloestelam-cert.timer 2>/dev/null || true
+
+  rm -f "${CHALLENGE_DIR}/aloestelam-ready"
+  rm -f /var/www/aloestelam/.ssl-ready
+  rm -f "${DEPLOY_DIR}/auto-issue-cert.sh"
+  rm -f "${DEPLOY_DIR}/install-runtime.sh"
+  rm -f /tmp/aloestelam-deploy-bundle.tgz
+  rm -f /tmp/aloestelam-publish.tar.gz
+  rm -f /tmp/aloestelam.ir.conf /tmp/aloestelam.service /tmp/bootstrap-server.sh /tmp/issue-cert.sh /tmp/remote-deploy.sh
+  rm -rf /tmp/aloestelam-deploy /tmp/aloestelam-deploy-bundle
+
+  log "Ephemeral cert artifacts removed."
+}
+
+apply_ssl_nginx() {
   if [[ -f "${NGINX_SITE_SRC}" ]]; then
     install -m 644 "${NGINX_SITE_SRC}" /etc/nginx/sites-available/aloestelam.ir
     nginx -t
     systemctl reload nginx
   fi
-  touch "${MARKER_FILE}"
-  systemctl disable --now aloestelam-cert.timer 2>/dev/null || true
+}
+
+if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
+  log "Certificate already exists."
+  apply_ssl_nginx
+  cleanup_ephemeral
   exit 0
 fi
 
@@ -29,7 +53,6 @@ printf '%s' "${TOKEN}" > "${CHALLENGE_DIR}/aloestelam-ready"
 chmod -R a+rX /var/www/certbot
 
 dns_ready=0
-# Cloudflare (orange) or direct A record: HTTP challenge must reach this origin.
 if curl -fsS --connect-timeout 10 --max-time 20 \
   "http://${DOMAIN}/.well-known/acme-challenge/aloestelam-ready" \
   | grep -Fxq "${TOKEN}"; then
@@ -41,7 +64,6 @@ elif curl -fsS --connect-timeout 10 --max-time 20 \
   dns_ready=1
   log "HTTP challenge reachable via www.${DOMAIN}"
 else
-  # Fallback: direct DNS to origin IP (grey-cloud / not yet proxied).
   resolved="$(dig +short "${DOMAIN}" A | head -n1 || true)"
   if [[ "${resolved}" == "${EXPECTED_IP}" ]]; then
     if curl -fsS --connect-timeout 10 --max-time 20 \
@@ -66,9 +88,6 @@ certbot certonly --webroot -w /var/www/certbot \
   -d "${DOMAIN}" -d "www.${DOMAIN}" \
   --email "${EMAIL}" --agree-tos --non-interactive --keep-until-expiring
 
-install -m 644 "${NGINX_SITE_SRC}" /etc/nginx/sites-available/aloestelam.ir
-nginx -t
-systemctl reload nginx
-touch "${MARKER_FILE}"
-systemctl disable --now aloestelam-cert.timer 2>/dev/null || true
+apply_ssl_nginx
+cleanup_ephemeral
 log "TLS enabled for ${DOMAIN}"
