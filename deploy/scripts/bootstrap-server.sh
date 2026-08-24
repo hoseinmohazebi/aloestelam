@@ -52,13 +52,20 @@ nginx -t
 systemctl reload nginx
 
 if [[ ! -d "/etc/letsencrypt/live/${DOMAIN}" ]]; then
-  certbot certonly --webroot -w /var/www/certbot \
+  if certbot certonly --webroot -w /var/www/certbot \
     -d "${DOMAIN}" -d "www.${DOMAIN}" \
-    --email "${EMAIL}" --agree-tos --non-interactive --keep-until-expiring
+    --email "${EMAIL}" --agree-tos --non-interactive --keep-until-expiring; then
+    install -m 644 "${NGINX_SITE_SRC}" /etc/nginx/sites-available/aloestelam.ir
+    nginx -t
+    systemctl reload nginx
+    echo "TLS enabled for ${DOMAIN}"
+  else
+    echo "Certbot skipped/failed. Keeping HTTP reverse-proxy until DNS for ${DOMAIN} points to this server."
+  fi
+else
+  install -m 644 "${NGINX_SITE_SRC}" /etc/nginx/sites-available/aloestelam.ir
+  nginx -t
+  systemctl reload nginx
 fi
-
-install -m 644 "${NGINX_SITE_SRC}" /etc/nginx/sites-available/aloestelam.ir
-nginx -t
-systemctl reload nginx
 
 echo "Server bootstrap completed for ${DOMAIN}"
