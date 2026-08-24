@@ -1,47 +1,44 @@
-name: Deploy
+name: Auto TLS
 
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 concurrency:
-  group: deploy-production
-  cancel-in-progress: true
+  group: aloestelam-auto-tls
+  cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  ensure-cert:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: Restore
-        run: dotnet restore Aloestelam.slnx
-
-      - name: Publish
+      - name: Skip if certificate already exists
+        id: check
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          dotnet publish src/Aloestelam.Web/Aloestelam.Web.csproj \
-            -c Release \
-            -o ./publish \
-            --no-restore
-
-      - name: Pack publish output
-        run: tar -czf aloestelam-publish.tar.gz -C ./publish .
-
-      - name: Prepare SSH key
-        run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          PORT="${SSH_PORT:-22}"
+          if ssh -p "$PORT" "${SSH_USER}@${SSH_HOST}" 'test -f /etc/letsencrypt/live/aloestelam.ir/fullchain.pem'; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Certificate already present"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Upload package and deploy scripts
+      - name: Trigger auto-issue on server
+        if: steps.check.outputs.exists != 'true'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -58,12 +55,7 @@ jobs:
           cp deploy/scripts/install-runtime.sh /tmp/aloestelam-deploy-bundle/
           cp deploy/scripts/remote-deploy.sh /tmp/aloestelam-deploy-bundle/
           tar -czf /tmp/aloestelam-deploy-bundle.tgz -C /tmp/aloestelam-deploy-bundle .
-
-          scp -P "$PORT" \
-            aloestelam-publish.tar.gz \
-            /tmp/aloestelam-deploy-bundle.tgz \
-            "${SSH_USER}@${SSH_HOST}:/tmp/"
-
+          scp -P "$PORT" /tmp/aloestelam-deploy-bundle.tgz "${SSH_USER}@${SSH_HOST}:/tmp/"
           ssh -p "$PORT" "${SSH_USER}@${SSH_HOST}" bash -s <<'REMOTE'
           set -euo pipefail
           rm -rf /tmp/aloestelam-deploy
@@ -72,5 +64,4 @@ jobs:
           sed -i 's/\r$//' /tmp/aloestelam-deploy/*.sh || true
           chmod +x /tmp/aloestelam-deploy/*.sh
           /tmp/aloestelam-deploy/install-runtime.sh /tmp/aloestelam-deploy
-          /tmp/aloestelam-deploy/remote-deploy.sh /tmp/aloestelam-publish.tar.gz
           REMOTE

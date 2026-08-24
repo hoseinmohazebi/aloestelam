@@ -1,0 +1,12 @@
+[Unit]
+Description=Retry Aloestelam TLS issuance until DNS/Cloudflare is ready
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=aloestelam-cert.service
+
+[Install]
+WantedBy=timers.target

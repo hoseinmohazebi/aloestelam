@@ -20,8 +20,17 @@ dotnet run --project src/Aloestelam.Web
 
 - Domain: `aloestelam.ir`
 - App listens on `127.0.0.1:5090`
-- nginx terminates TLS and proxies to Kestrel
+- nginx terminates TLS and proxies only `aloestelam.ir` / `www.aloestelam.ir` to Kestrel
 - GitHub Actions deploys on push to `main`
+- TLS is issued automatically when DNS/Cloudflare becomes reachable (`aloestelam-cert.timer` + scheduled workflow)
+
+### Cloudflare
+
+1. A records for `@` and `www` → `65.109.221.32`
+2. SSL/TLS mode: **Full** (after origin cert is issued) or **Flexible** temporarily
+3. For first certificate: keep HTTP reachable to origin (do not force HTTPS-only redirect until cert exists)
+
+No manual `scp` / certbot commands are required after DNS propagates.
 
 ### GitHub secrets
 
@@ -31,19 +40,3 @@ dotnet run --project src/Aloestelam.Web
 | `SSH_USER` | `root` |
 | `SSH_PRIVATE_KEY` | private key used for deploy |
 | `SSH_PORT` | `22` (optional) |
-
-### First-time server bootstrap
-
-```bash
-scp deploy/nginx/aloestelam.ir.conf deploy/systemd/aloestelam.service deploy/scripts/bootstrap-server.sh root@65.109.221.32:/tmp/
-ssh root@65.109.221.32 'chmod +x /tmp/bootstrap-server.sh && CERTBOT_EMAIL=admin@aloestelam.ir /tmp/bootstrap-server.sh'
-```
-
-DNS A records for `aloestelam.ir` and `www.aloestelam.ir` must point to `65.109.221.32` before certbot can issue certificates.
-
-After DNS is ready:
-
-```bash
-scp deploy/nginx/aloestelam.ir.conf deploy/scripts/issue-cert.sh root@65.109.221.32:/tmp/
-ssh root@65.109.221.32 'sed -i "s/\r$//" /tmp/issue-cert.sh && chmod +x /tmp/issue-cert.sh && /tmp/issue-cert.sh /tmp/aloestelam.ir.conf'
-```

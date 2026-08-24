@@ -1,0 +1,10 @@
+[Unit]
+Description=Issue Aloestelam TLS certificate when DNS/Cloudflare is ready
+ConditionPathExists=!/etc/letsencrypt/live/aloestelam.ir/fullchain.pem
+After=network-online.target nginx.service aloestelam.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/var/www/aloestelam/deploy/auto-issue-cert.sh
+Nice=10
