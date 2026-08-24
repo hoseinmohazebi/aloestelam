@@ -40,3 +40,10 @@ ssh root@65.109.221.32 'chmod +x /tmp/bootstrap-server.sh && CERTBOT_EMAIL=admin
 ```
 
 DNS A records for `aloestelam.ir` and `www.aloestelam.ir` must point to `65.109.221.32` before certbot can issue certificates.
+
+After DNS is ready:
+
+```bash
+scp deploy/nginx/aloestelam.ir.conf deploy/scripts/issue-cert.sh root@65.109.221.32:/tmp/
+ssh root@65.109.221.32 'sed -i "s/\r$//" /tmp/issue-cert.sh && chmod +x /tmp/issue-cert.sh && /tmp/issue-cert.sh /tmp/aloestelam.ir.conf'
+```
