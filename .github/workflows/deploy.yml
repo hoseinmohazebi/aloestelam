@@ -1,0 +1,56 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore Aloestelam.slnx
+
+      - name: Publish
+        run: |
+          dotnet publish src/Aloestelam.Web/Aloestelam.Web.csproj \
+            -c Release \
+            -o ./publish \
+            --no-restore
+
+      - name: Pack publish output
+        run: tar -czf aloestelam-publish.tar.gz -C ./publish .
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Upload package and deploy scripts
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          PORT="${SSH_PORT:-22}"
+          scp -P "$PORT" \
+            aloestelam-publish.tar.gz \
+            deploy/scripts/remote-deploy.sh \
+            "${SSH_USER}@${SSH_HOST}:/tmp/"
+          ssh -p "$PORT" "${SSH_USER}@${SSH_HOST}" \
+            "chmod +x /tmp/remote-deploy.sh && sudo /tmp/remote-deploy.sh /tmp/aloestelam-publish.tar.gz"

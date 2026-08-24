@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Aloestelam.Application/Aloestelam.Application.csproj" />
+    <Project Path="src/Aloestelam.Domain/Aloestelam.Domain.csproj" />
+    <Project Path="src/Aloestelam.Infrastructure/Aloestelam.Infrastructure.csproj" />
+    <Project Path="src/Aloestelam.Web/Aloestelam.Web.csproj" />
+  </Folder>
+</Solution>
