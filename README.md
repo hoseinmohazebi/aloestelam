@@ -19,7 +19,7 @@ dotnet run --project src/Aloestelam.Web
 ## Production
 
 - Domain: `aloestelam.ir`
-- App listens on `127.0.0.1:5080`
+- App listens on `127.0.0.1:5090`
 - nginx terminates TLS and proxies to Kestrel
 - GitHub Actions deploys on push to `main`
 
